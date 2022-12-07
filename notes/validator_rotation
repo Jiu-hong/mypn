@@ -1,0 +1,35 @@
+sudo ./global-state-update-gen validators \
+-d /var/lib/casper/casper-node/mynetwork \
+-s d4aa05afc7475472a5f038fac9776c31cd37c606c9abda08931f5a9e471f0abc \
+-v "0124f6d669b8b231b60e1616662f74e887f6ec75ede61257b93bed8de027bb7b22,1000000000000001" \
+-v "019d6115e57ec65c1d53b52fec83ac9d5b019c99f6f225ab065f440a959b2735eb,1000000000000002" \
+-v "01867a43b8a73dd47a58eb605f651e24f4bc531522cc9663879607821cdc454dd6,1000000000000003" \
+-v "0104fdfc180afc5fb007e428d17f058ddd15aa9036e3cccd31e4215f3efcdbc591,1000000000000004"> /tmp/global_state.toml
+
+
+height 55 => get-block only shows the following 3 validators
+      "proofs": [
+        {
+          "public_key": "0124f6d669b8b231b60e1616662f74e887f6ec75ede61257b93bed8de027bb7b22",
+          "signature": "018d94d250e6b3a9b8d4f7a9d646ce75c6c96b2a9ef25cdb2f696d9fd16c9edc1a47bd792f325f27c9110585ecf6803cb8976dc70178736a0ef439f5af82ff870d"
+        },
+        {
+          "public_key": "01867a43b8a73dd47a58eb605f651e24f4bc531522cc9663879607821cdc454dd6",
+          "signature": "01486f42bfedaf6943426ac2b7989f12665ace1be8f0a1666c96123da90836b474546b9d3936bea838faef58954e99d75c399d3c193ac9cc1e5530a53480610704"
+        },
+        {
+          "public_key": "019d6115e57ec65c1d53b52fec83ac9d5b019c99f6f225ab065f440a959b2735eb",
+          "signature": "01a3f373bd5c263a8911725fd2d6df402dde675214b8fd2316577c1969f225b94ba817bd741b60fb72b55a7b9d9f05f257f161ff7c31d952c45ae134f2dc6e0b09"
+        }
+      ]
+
+instructions:
+In order for this to work, you'd have to do this:
+.Wait until era 2 starts.
+.Read the state root hash from the last block in era 1.
+.Stop the network.
+.Generate global_state.toml using the state root hash from the last block of era 1.
+.Set the chainspec activation point and last_emergency_restart to era 2, and hard_reset to true (it's usually set this way by default) - this would make the network revert to the end of era 1 when it is restarted with the upgrade.
+.Stage the upgrade (that is, copy the chainspecs, configs and binaries for 1.0.1 where they should be) - still while the network is down.
+.Restart the network with nodes staged for the upgrade.
+Unfortunately, with the current state of global-state-update-gen that's the only way to rotate the validators - but I already requested a ticket to improve this.

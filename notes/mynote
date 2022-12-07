@@ -1,0 +1,84 @@
+install according to doc
+```
+cargo install --git https://github.com/casper-network/casper-node/ --tag private-1.4.6 global-state-update-gen
+
+sudo cp /home/ubuntu/.cargo/bin/global-state-update-gen /usr/bin/
+cd /usr/bin
+sudo chmod 755 /usr/bin/global-state-update-gen
+
+sudo -u casper global-state-update-gen generate-admins  \
+--data-dir /var/lib/casper/casper-node/mynetwork   \
+--state-hash e64c6191303cdf31fadc6cfd327855977241ac9a0d1726949fbb7dd1de593c0e   \
+--admin 019e2dc0c89d46b4471bbc5583406f25ff1574d3903de9c3b147ef39a046284784,1000000000000001>/tmp/mytest.toml
+```
+
+
+1.0.2 version:
+
+
+casper-client transfer \
+--id 1 \
+--transfer-id 123456789012345 \
+--node-address http://localhost:7777 \
+--amount 2500000000 \
+--secret-key /Users/jh/keys/test1/secret_key.pem \
+--chain-name casper \
+--target-account 01230de4bd0922cd08e190fd0c87cc36ee5dd0282d5289a7422efcdd44f683df69 \
+--payment-amount 10000
+
+
+v1 admins:
+0152836c51eac04205bb7febe9d92da50758178b0bf388bd03e1da13147b99e2c5,  => test1
+balance: 1000000000000000000000026138374205
+0193b3800386aefe11648150f6779158f2c7e1233c8e9b423338eb71b93ae6c5a9   => test2
+balance: 999999999999999999996016526756255
+
+new admin:
+019e2dc0c89d46b4471bbc5583406f25ff1574d3903de9c3b147ef39a046284784 => ~/keys/myadminkey
+
+validators:
+"public_key": "0124f6d669b8b231b60e1616662f74e887f6ec75ede61257b93bed8de027bb7b22", 1
+"public_key": "01867a43b8a73dd47a58eb605f651e24f4bc531522cc9663879607821cdc454dd6", 3
+"public_key": "019d6115e57ec65c1d53b52fec83ac9d5b019c99f6f225ab065f440a959b2735eb", 2
+
+
+
+
+curl -s http://mypn.herokuapp.com//mynetwork/protocol_versions
+
+
+
+unzip:
+tar -xf public/mynetwork/1_0_0/config.tar.gz -C test/v1
+tar -xf public/mynetwork/1_0_1/config.tar.gz -C test/v2
+tar -xf public/mynetwork/1_0_2/config.tar.gz -C test/v3
+
+update configs
+...
+zip:
+tar -czvf public/mynetwork/1_0_0/config.tar.gz  -C test/v1 .
+tar -czvf public/mynetwork/1_0_1/config.tar.gz  -C test/v2 .
+tar -czvf public/mynetwork/1_0_2/config.tar.gz  -C test/v3 .
+
+test
+tar -xf public/mynetwork/1_0_0/config.tar.gz -C testcheck/v1
+tar -xf public/mynetwork/1_0_1/config.tar.gz -C testcheck/v2
+tar -xf public/mynetwork/1_0_2/config.tar.gz -C testcheck/v3
+
+git push heroku main
+heroku logs --tail
+
+add admins:
+administrators in chainspec.toml has to be updated as well.
+global_state.toml has to be the same in all validators
+and the ownership should be casper
+```
+ubuntu@worker1:/etc/casper/1_0_1$ ls -l
+total 52
+-rw-r--r-- 1 casper casper   904 Aug 30 12:54 accounts.toml
+-rw-r--r-- 1 casper casper 11492 Aug 30 14:14 chainspec.toml
+-rw-r--r-- 1 casper casper 12818 Aug 30 12:54 config-example.toml
+-rw-rw-r-- 1 casper casper 12820 Aug 30 14:33 config.toml
+-rw-rw-r-- 1 casper casper   734 Aug 30 14:37 global_state.toml
+```
+

@@ -1,0 +1,9 @@
+casper-client transfer \
+--id 1 \
+--transfer-id 123456789012345 \
+--node-address http://16.162.124.124:7777 \
+--amount 2500000000 \
+--secret-key /Users/jh/keys/test2/secret_key.pem \
+--chain-name mynetwork \
+--target-account 01ed3e6f37edcd1d66e7821c72ef30cdee823c77cd3c13d1cf1f5e9393eaa8b1eb \
+--payment-amount 100000000

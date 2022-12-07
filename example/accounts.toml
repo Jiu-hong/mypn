@@ -1,0 +1,70 @@
+# VALIDATOR 1.
+[[accounts]]
+public_key = "xxxxx"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000001"
+delegation_rate = 1
+
+# VALIDATOR 2.
+[[accounts]]
+public_key = "xxx"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000002"
+delegation_rate = 2
+
+# VALIDATOR 3.
+[[accounts]]
+public_key = "xxx"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000003"
+delegation_rate = 3
+
+# VALIDATOR 4.
+[[accounts]]
+public_key = "xxx"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000004"
+delegation_rate = 4
+
+# VALIDATOR 5.
+[[accounts]]
+public_key = "xxx"
+balance = "1000000000000000000"
+
+[accounts.validator]
+bonded_amount = "1000000000000005"
+delegation_rate = 5
+
+# VALIDATOR 6.
+[[accounts]]
+public_key = "xxx"
+balance = "1000000000000000000"
+
+[accounts.validator]
+bonded_amount = "1000000000000006"
+delegation_rate = 6
+
+# VALIDATOR 7.
+[[accounts]]
+public_key = "xxx"
+balance = "1000000000000000000"
+
+[accounts.validator]
+bonded_amount = "1000000000000007"
+delegation_rate = 7
+
+[[administrators]]
+public_key = "0152836c51eac04205bb7febe9d92da50758178b0bf388bd03e1da13147b99e2c5"
+balance = "1000000000000000000000000000000000"
+
+[[administrators]]
+public_key = "010427c1d1227c9d2aafe8c06c6e6b276da8dcd8fd170ca848b8e3e8e1038a6dc8"
+balance = "1000000000000000000000000000000000"

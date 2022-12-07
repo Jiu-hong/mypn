@@ -1,0 +1,26 @@
+state-root-hash:
+era: 1 last block:
+fced10c6beaa5a4ae61521d5d34f9b7f9dc2406456b4196c9ad39fbab404607e
+
+sudo systemctl stop casper-node-launcher.service
+
+sudo ./global-state-update-gen validators \
+-d /var/lib/casper/casper-node/mynetwork \
+-s fced10c6beaa5a4ae61521d5d34f9b7f9dc2406456b4196c9ad39fbab404607e \
+-v "0124f6d669b8b231b60e1616662f74e887f6ec75ede61257b93bed8de027bb7b22,1000000000000001" \
+-v "019d6115e57ec65c1d53b52fec83ac9d5b019c99f6f225ab065f440a959b2735eb,1000000000000002" \
+-v "0104fdfc180afc5fb007e428d17f058ddd15aa9036e3cccd31e4215f3efcdbc591,1000000000000004" > /tmp/global_state.toml
+
+
+0104fdfc180afc5fb007e428d17f058ddd15aa9036e3cccd31e4215f3efcdbc591
+sudo systemctl start casper-node-launcher.service
+
+/var/log/casper/casper-node.log
+
+[protocol.last_emergency_restart] must be lower than [protocol.activation_point] in the chainspec.
+
+=====compile node===
+cargo build --release --package casper-node --features casper-mainnet
+cp casper-node /Users/jh/setup-mynode/1.4.8/original
+
+tar -czvf bin.tar.gz  casper-node 

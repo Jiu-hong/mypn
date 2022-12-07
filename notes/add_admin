@@ -1,0 +1,37 @@
+install according to doc
+```
+cargo install --git https://github.com/casper-network/casper-node/ --tag private-1.4.6 global-state-update-gen
+
+sudo cp /home/ubuntu/.cargo/bin/global-state-update-gen /usr/bin/
+cd /usr/bin
+sudo chmod 755 /usr/bin/global-state-update-gen
+
+sudo -u casper global-state-update-gen generate-admins  \
+--data-dir /var/lib/casper/casper-node/mynetwork   \
+--state-hash e64c6191303cdf31fadc6cfd327855977241ac9a0d1726949fbb7dd1de593c0e   \
+--admin 019e2dc0c89d46b4471bbc5583406f25ff1574d3903de9c3b147ef39a046284784,1000000000000001>/tmp/mytest.toml
+```
+
+v1 admins:
+0152836c51eac04205bb7febe9d92da50758178b0bf388bd03e1da13147b99e2c5,  => test1
+balance: 1000000000000000000000026138374205
+0193b3800386aefe11648150f6779158f2c7e1233c8e9b423338eb71b93ae6c5a9   => test2
+balance: 999999999999999999996016526756255
+
+new admin:
+019e2dc0c89d46b4471bbc5583406f25ff1574d3903de9c3b147ef39a046284784 => ~/keys/myadminkey
+
+
+add admins:
+administrators in chainspec.toml has to be updated as well.
+global_state.toml has to be the same in all validators 
+and the ownership should be casper
+```
+ubuntu@worker1:/etc/casper/1_0_1$ ls -l
+total 52
+-rw-r--r-- 1 casper casper   904 Aug 30 12:54 accounts.toml
+-rw-r--r-- 1 casper casper 11492 Aug 30 14:14 chainspec.toml
+-rw-r--r-- 1 casper casper 12818 Aug 30 12:54 config-example.toml
+-rw-rw-r-- 1 casper casper 12820 Aug 30 14:33 config.toml
+-rw-rw-r-- 1 casper casper   734 Aug 30 14:37 global_state.toml
+```

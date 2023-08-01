@@ -102,7 +102,7 @@ Issue this command
 ```
 curl -s http://<domain name>/<network name>/protocol_versions
 ```
-for example, `curl -s http://testprivatenet.herokuapp.com/mynetwork/protocol_versions`
+for example, `curl -s https://my-pn.onrender.com/mynetwork/protocol_versions`
 
 output should be
 ```

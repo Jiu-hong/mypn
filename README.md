@@ -147,7 +147,7 @@ For launching new network there should be only 1 protocol like 1_0_0
 
 ```
 cd /etc/casper/network_configs
-sudo -u casper curl -JLO mypn.herokuapp.com/mynetwork/mynetwork.conf
+sudo -u casper curl -JLO my-pn.onrender.com/mynetwork/mynetwork.conf
 sudo -u casper /etc/casper/node_util.py stage_protocols mynetwork.conf
 ```
 

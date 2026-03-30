@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 152
+activation_point = 2
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -23,7 +23,8 @@ name = 'mynetwork'
 maximum_net_message_size = 25_165_824
 
 [core]
-rewards_handling = { type = 'sustain', ratio = [2,8], purse_address = "uref-edf762fef52aa90c14c5e0fc27c7147d1177cabdc8147a630b3d3244fdb25a12-007" }
+# rewards_handling = { type = 'sustain', ratio = [2,8], purse_address = "uref-edf762fef52aa90c14c5e0fc27c7147d1177cabdc8147a630b3d3244fdb25a12-007" }
+rewards_handling = { type = 'standard' }
 minimum_delegation_rate = 5
 # Era duration.
 era_duration = '3 minutes'

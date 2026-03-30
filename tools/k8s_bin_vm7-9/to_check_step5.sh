@@ -44,7 +44,7 @@ chmod +x tools/k8s_bin_vm7-9/load-image.sh
 source tools/k8s_bin_vm7-9/load-image.sh
 
 # Step 6 — Deploy:
-kubectl apply -f tools/k8s_bin_vm7-9/casper-node-daemonset.yaml
+kubectl apply -f ppers.yaml
 
 # Step 7 — Verify:
 kubectl get pods -o wide   # should show 3 pods, one per worker node

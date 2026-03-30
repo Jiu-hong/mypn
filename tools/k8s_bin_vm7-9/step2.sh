@@ -1,9 +1,9 @@
-# On control plane (host) only
+# On control plane (server2604) only
 
 sudo kubeadm init \
- --control-plane-endpoint=192.168.2.100 \
+ --control-plane-endpoint=192.168.2.113 \
  --pod-network-cidr=10.244.0.0/16 \
- --apiserver-advertise-address=192.168.2.100
+ --apiserver-advertise-address=192.168.2.113
 
 # Set up kubeconfig
 

@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: myapp
+  ports:
+    - port: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: myapp
+spec:
+  serviceName: myapp
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      hostAliases:
+        - ip: '192.168.2.100'
+          hostnames:
+            - 'mynetwork.local'
+      volumes:
+        - name: peerdata
+          emptyDir: {}
+        - name: valkeys-0
+          secret:
+            secretName: validator-keys-0
+            defaultMode: 0600
+        - name: valkeys-1
+          secret:
+            secretName: validator-keys-1
+            defaultMode: 0600
+        - name: valkeys-2
+          secret:
+            secretName: validator-keys-2
+            defaultMode: 0600
+      initContainers:
+        # This init container discovers the IP addresses of all
+        # peers and writes them to /peer/peers.env
+        - name: discover-peers
+          image: busybox:1.28
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              DNS="10.96.0.10"
+              OUT=/peer/peers.env
+
+              OWN_HOST="$(hostname)"
+              OWN_IP="$(hostname -i | awk '{print $1}')"
+
+              echo "Pod: $OWN_HOST | IP: $OWN_IP"
+              echo "=== Waiting for all peers ==="
+
+              echo "OWN_HOST=$OWN_HOST" > "$OUT"
+              echo "OWN_IP=$OWN_IP" >> "$OUT"
+
+              for i in 0 1 2; do
+                H="myapp-$i.myapp.default.svc.cluster.local"
+                until nslookup "$H" "$DNS" 2>/dev/null | grep "Address 1:" | grep -v "$DNS" > /dev/null; do
+                  echo "Waiting for myapp-$i..."
+                  sleep 2
+                done
+                IP="$(nslookup "$H" "$DNS" 2>/dev/null | grep "Address 1:" | grep -v "$DNS" | awk '{print $3}')"
+                echo "myapp-$i => $IP"
+                echo "PEER_${i}_HOST=$H" >> "$OUT"
+                echo "PEER_${i}_IP=$IP" >> "$OUT"
+              done
+
+              echo "=== All peers ready ==="
+              echo "Generated $OUT:"
+              cat "$OUT"
+          volumeMounts:
+            - name: peerdata
+              mountPath: /peer
+
+      containers:
+        - name: app
+          image: casper-run:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: INITIAL_VERSION
+              value: 'true'
+          volumeMounts:
+            - name: peerdata
+              mountPath: /peer
+            - name: valkeys-0
+              mountPath: /validator-keys/0
+            - name: valkeys-1
+              mountPath: /validator-keys/1
+            - name: valkeys-2
+              mountPath: /validator-keys/2

@@ -1,0 +1,28 @@
+-- Step 1 — Pre-generate 3 validator key pairs (on control machine)
+
+casper-client keygen /home/jh/keys/validator0
+casper-client keygen /home/jh/keys/validator1
+casper-client keygen /home/jh/keys/validator2
+
+-- Step 2 — Update accounts.toml with the public keys
+cat /home/jh/keys/validator0/public_key_hex   # → paste as VALIDATOR 1 public_key
+cat /home/jh/keys/validator1/public_key_hex   # → paste as VALIDATOR 2 public_key
+cat /home/jh/keys/validator2/public_key_hex   # → paste as VALIDATOR 3 public_key
+
+-- Step 3 — Create Kubernetes Secrets (one per pod)
+kubectl create secret generic validator-keys-0 \
+  --from-file=secret_key.pem=/home/jh/keys/validator0/secret_key.pem \
+  --from-file=public_key.pem=/home/jh/keys/validator0/public_key.pem \
+  --from-file=public_key_hex=/home/jh/keys/validator0/public_key_hex
+
+
+kubectl create secret generic validator-keys-1 \
+  --from-file=secret_key.pem=/home/jh/keys/validator1/secret_key.pem \
+  --from-file=public_key.pem=/home/jh/keys/validator1/public_key.pem \
+  --from-file=public_key_hex=/home/jh/keys/validator1/public_key_hex
+
+
+kubectl create secret generic validator-keys-2 \
+  --from-file=secret_key.pem=/home/jh/keys/validator2/secret_key.pem \
+  --from-file=public_key.pem=/home/jh/keys/validator2/public_key.pem \
+  --from-file=public_key_hex=/home/jh/keys/validator2/public_key_hex

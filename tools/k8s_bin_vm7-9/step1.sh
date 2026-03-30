@@ -1,4 +1,4 @@
-#  On ALL nodes (host + vm7, vm8, vm9)
+#  On ALL nodes (server2604 + vm7, vm8, vm9)
 # Disable swap (required by k8s)
 # to check `sudo swapon --show`
 sudo swapoff -a

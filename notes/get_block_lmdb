@@ -1,0 +1,11 @@
+sudo  ~/ca/casper-db-utils/target/release/casper-db-utils latest-block-summary  --db-path /var/lib/casper/casper-node/mynetwork
+{
+  "network_name": "mynetwork",
+  "block_hash": "7683b7e49da31fec7000f2f7203143b6c52202e0536c7c92fd0e5e2477bbdff0",
+  "body_hash": "8f86affcbd85c8cbf79bbdd424801a76ad446119d041eee572e6a9ccfdc1d975",
+  "era_id": 6,
+  "height": 523,
+  "protocol_version": "2.1.1",
+  "state_root_hash": "556331fa19f407006663de6a8bd1e3d7f1966be187d67ba3431e15d615afc675",
+  "timestamp": "2026-03-09T01:09:15.305Z"
+}

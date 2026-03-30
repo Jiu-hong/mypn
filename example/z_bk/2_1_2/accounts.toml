@@ -1,0 +1,51 @@
+# VALIDATOR 1.
+[[accounts]]
+public_key = "0139f9f61b9e8d8e98cf3095011f785c27d8e7fae1d39e018feaf4934149174cba"
+balance = "999999999999999999999999999999"
+
+[accounts.validator]
+bonded_amount = "10000000000000000001"
+delegation_rate = 1
+
+# VALIDATOR 2.
+[[accounts]]
+public_key = "015d0f11be9db654103db9bf9b43d4431f85bbd25ba58cd788bd23622edcb294e6"
+balance = "999999999999999999999999999998"
+
+[accounts.validator]
+bonded_amount = "1000000000000002"
+delegation_rate = 2
+
+# VALIDATOR 3.
+[[accounts]]
+public_key = "013e3bbc876951c66c6f41956d3c7bde9291f529954fc9f3b2e6cca0ee0335bd1f"
+balance = "999999999999999999999999999997"
+
+[accounts.validator]
+bonded_amount = "1000000000000003"
+delegation_rate = 3
+
+# DELEGATORs
+[[delegators]]
+delegator_public_key = "01eb9c059b2624f475bb0726d8b2e382b025818dce3ec1f5ecf7f80ca708b6440e"
+balance = "5000000000000"
+validator_public_key = "0139f9f61b9e8d8e98cf3095011f785c27d8e7fae1d39e018feaf4934149174cba"
+delegated_amount = "1000000000000"
+
+[[delegators]]
+delegator_public_key = "01ebb0e23660d71a0fcd19ac6d96b9c0a95fa9081465667cb6e6626580e5804a5b"
+balance = "0"
+validator_public_key = "015d0f11be9db654103db9bf9b43d4431f85bbd25ba58cd788bd23622edcb294e6"
+delegated_amount = "200904000000000"
+
+[[delegators]]
+delegator_public_key = "016b1ed3c0bbc59e853802a8fdf935df5cf68c775df2a4f5efba4fed634fa9884e"
+balance = "0"
+validator_public_key = "015d0f11be9db654103db9bf9b43d4431f85bbd25ba58cd788bd23622edcb294e6"
+delegated_amount = "325500000000000"
+
+[[delegators]]
+delegator_public_key = "01ff815bba34957e2a1a575be558ae7bdabd709e6104a1a12f77b3f348e5978f89"
+balance = "0"
+validator_public_key = "0139f9f61b9e8d8e98cf3095011f785c27d8e7fae1d39e018feaf4934149174cba"
+delegated_amount = "331562000000000"

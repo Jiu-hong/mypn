@@ -1,0 +1,10 @@
+/var/log/casper/*.log {
+    size 20M
+    rotate 5
+    dateext
+    dateformat .%Y-%m-%d-%s
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -1,0 +1,16 @@
+# note when changing initial toml files.
+# 1. accounts.toml should contain the validator key in the containers.
+# 2. config-example.toml should have known_addresses set to the worker node IPs (not the control plane IP) and INITIAL_VERSION env var set to true in the daemonset yaml (to skip trusted_hash update on first run).
+# enter into container:
+kubectl exec -it casper-node-h5cnp -- bash
+
+# apply
+kubectl apply -f tools/k8s_bin_vm7-9/casper-node-daemonset.yaml
+
+# Restart the containers:
+kubectl rollout restart daemonset/casper-node
+
+# stop containers
+kubectl delete -f tools/k8s_bin_vm7-9/casper-node-daemonset.yaml
+# or
+kubectl delete daemonset casper-node

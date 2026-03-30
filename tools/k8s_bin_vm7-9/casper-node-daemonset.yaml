@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: casper-node
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: casper-node
+  template:
+    metadata:
+      labels:
+        app: casper-node
+    spec:
+      # Use host network so port 35000 (P2P) is directly accessible
+      # hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      # Run only on worker nodes (not control-plane)
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+
+      hostAliases:
+        - ip: '192.168.2.100'
+          hostnames:
+            - 'mynetwork.local'
+
+      initContainers:
+        - name: fix-permissions
+          image: docker.io/library/casper-run:latest
+          imagePullPolicy: Never
+          command:
+            [
+              'sh',
+              '-c',
+              'mkdir -p /var/lib/casper/bin /etc/casper /var/log/casper && chown -R casper:casper /var/lib/casper /var/log/casper /etc/casper',
+            ]
+          # volumeMounts:
+          #   - name: casper-data
+          #     mountPath: /var/lib/casper
+          #   - name: casper-logs
+          #     mountPath: /var/log/casper
+          #   - name: casper-config
+          #     mountPath: /etc/casper
+
+      containers:
+        - name: casper-node
+          image: docker.io/library/casper-run:latest
+          imagePullPolicy: Never
+          env:
+            - name: RUST_LOG
+              value: 'info'
+            - name: INITIAL_VERSION
+              value: 'TRUE'
+            - name: LAN_IP
+              valueFrom:
+                fieldRef:
+                  # fieldPath: status.hostIP
+                  fieldPath: status.podIP
+          ports:
+            - containerPort: 7779 # Binary
+            - containerPort: 8888 # REST
+            - containerPort: 35000 # P2P
+          volumeMounts:
+            # - name: casper-data
+            #   mountPath: /var/lib/casper
+            # - name: casper-logs
+            #   mountPath: /var/log/casper
+            - name: casper-validator-keys
+              mountPath: /etc/casper/validator_keys
+
+      volumes:
+        # - name: casper-data
+        #   hostPath:
+        #     path: /var/lib/casper
+        #     type: DirectoryOrCreate
+        # - name: casper-logs
+        #   hostPath:
+        #     path: /var/log/casper
+        #     type: DirectoryOrCreate
+        - name: casper-validator-keys
+          hostPath:
+            path: /etc/casper/validator_keys
+            type: DirectoryOrCreate

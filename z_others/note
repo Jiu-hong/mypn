@@ -1,0 +1,25 @@
+inside docker the config toml file should include public_address = '192.168.2.107:0' -> VM's ip address instead of docker's ip address
+
+# ====================================
+
+# Configuration options for networking
+
+# ====================================
+
+[network]
+
+# The public address of the node.
+
+#
+
+# It must be publicly available in order to allow peers to connect to this node.
+
+# If the port is set to 0, the actual bound port will be substituted.
+
+public_address = '192.168.2.107:0'
+
+# Address to bind to for listening.
+
+# If port is set to 0, a random port will be used.
+
+bind_address = '0.0.0.0:7025'

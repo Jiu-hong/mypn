@@ -1,0 +1,1060 @@
+#!/usr/bin/env python3
+import ipaddress
+import shutil
+import sys
+from pathlib import Path
+from urllib import request
+import argparse
+import enum
+import getpass
+from ipaddress import ip_address
+import tarfile
+import socket
+from collections import Counter
+from shutil import chown
+import os
+import json
+import time
+import glob
+import tempfile
+import re
+
+# protocol 1_0_0 should have accounts.toml
+# All other protocols should have chainspec.toml, config.toml and NOT accounts.toml
+# Protocols are shipped with config-example.toml to make config.toml
+BIN_PATH = Path("/var/lib/casper/bin")
+CONFIG_PATH = Path("/etc/casper")
+BIN_ARCHIVE_FILE = "bin.tar.gz"
+CONFIG_ARCHIVE_FILE = "config.tar.gz"
+DB_PATH = Path("/var/lib/casper/casper-node")
+NET_CONFIG_PATH = CONFIG_PATH / "network_configs"
+SCRIPT_NAME = "casper-node-util"
+NODE_IP = "127.0.0.1"
+# Below is automatically replaced. Modify set_version.py if changing
+VERSION = "1.0.9"
+
+def get_value_in_section(lines, section_name, value_name):
+    """ A bit of a hack due to toml not being in std lib """
+    header = ""
+    for line in lines:
+        clean_line = line.strip()
+        if clean_line.startswith("[") and clean_line.endswith("]"):
+            header = clean_line[1:-1]
+            continue
+        if header == section_name:
+            if line.startswith(value_name):
+                _, value = line.strip().split('=')
+                return value.strip().replace("'", "")
+    return None
+
+
+class ChainspecToml:
+    def __init__(self, protocol_path):
+        self.path = Path(protocol_path) / "chainspec.toml"
+        with open(self.path, "r") as f:
+            self.lines = f.readlines()
+
+    @property
+    def network_name(self):
+        return get_value_in_section(self.lines, 'network', 'name')
+
+    @property
+    def protocol_version(self):
+        return get_value_in_section(self.lines, 'protocol', 'version')
+
+class ConfigToml:
+    def __init__(self, protocol = None, protocol_path = None):
+        self.path = Path(protocol_path) / "config.toml"
+        with open(self.path, "r") as f:
+            self.lines = f.readlines()
+
+    def known_address_ip_ports(self):
+        known_addr_raw = get_value_in_section(self.lines, 'network', 'known_addresses')
+        if not known_addr_raw.startswith('[') or not known_addr_raw.endswith(']'):
+            raise Exception("Unexpected '[' and ']' values around array missing. Data is unknown format.")
+        known_addr_ip_ports = [node.replace("'", "").split(":") for node in known_addr_raw[1:-1].split(",")]
+        return known_addr_ip_ports
+
+    def public_address(self):
+        return get_value_in_section(self.lines, 'network', 'public_address')
+
+def get_status(ip=None, port=8888):
+    """ Get status data from node """
+    if ip is None:
+        ip = NODE_IP
+    full_url = f"http://{ip}:{port}/status"
+    r = request.urlopen(full_url, timeout=5)
+    return json.loads(r.read().decode('utf-8'))
+
+def remote_status_height(ip):
+    try:
+        status = get_status(ip)
+        block_info = status.last_added_block_info
+        if block_info is None:
+            return None
+        return block_info.get('height'), block_info.get('era_id')
+    except Exception:
+        return None
+
+def download_file(url, target_path):
+    print(f"Downloading {url} to {target_path}")
+    r = request.urlopen(url)
+    if r.status != 200:
+        raise IOError(f"Expected status 200 requesting {url}, received {r.status}")
+    with open(target_path, 'wb') as f:
+        f.write(r.read())
+
+
+def extract_tar_gz(source_file_path, target_path):
+    print(f"Extracting {source_file_path} to {target_path}")
+    with tarfile.TarFile.open(source_file_path) as tf:
+        for member in tf.getmembers():
+            tf.extract(member, target_path)
+
+
+def rpc_call(method: str, server: str, params: list, port: int = 7777, timeout: int = 5):
+    url = f"http://{server}:{port}/rpc"
+    req = request.Request(url, method="POST")
+    req.add_header('content-type', "application/json")
+    req.add_header('cache-control', "no-cache")
+    payload = json.dumps({"jsonrpc": "2.0", "method": method, "params": params, "id": 1}).encode('utf-8')
+    r = request.urlopen(req, payload, timeout=timeout)
+    json_data = json.loads(r.read())
+    return json_data["result"]
+
+
+def rpc_get_block(server: str, block_height=None, port: int = 7777, timeout: int = 5):
+    """
+    Get block based on block_hash, block_height, or last block if block_identifier is missing
+    """
+    params = []
+    if block_height:
+        params = [{"Height": int(block_height)}]
+    return rpc_call("chain_get_block", server, params, port)
+
+def get_semver_config_directories():
+    find_semver = re.compile(r"\d+_\d+_\d+")
+    for (root, dirs, files) in os.walk(CONFIG_PATH, topdown=True, followlinks=False):
+        for cur_dir in dirs:
+            if find_semver.match(cur_dir):
+                yield Path(root) / cur_dir
+
+def installed_network_versions():
+    for protocol_path in get_semver_config_directories():
+        chainspec = ChainspecToml(protocol_path)
+        yield chainspec.network_name, chainspec.protocol_version
+
+def delete_directory(dir_path, remove_parent=False):
+    # missing_ok=True arg to unlink only 3.8+, using try/catch.
+    try:
+        for path in dir_path.glob('*'):
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
+        if remove_parent:
+            shutil.rmtree(dir_path)
+    except FileNotFoundError:
+        pass
+
+def is_valid_ip(ip):
+    """ Check validity of ip address """
+    try:
+        _ = ipaddress.IPv4Network(ip)
+    except ValueError:
+        return False
+    else:
+        return True
+
+def verify_root_user():
+    if getpass.getuser() != "root":
+        print("Run with 'sudo'")
+        exit(1)
+
+def verify_casper_user():
+    if getpass.getuser() != "casper":
+        print(f"Run with 'sudo -u casper'")
+        exit(1)
+
+def is_casper_owned(path) -> bool:
+    return path.owner() == 'casper' and path.group() == 'casper'
+
+def walk_file_locations():
+    for path in BIN_PATH, CONFIG_PATH, DB_PATH:
+        try:
+            for _path in walk_path(path):
+                yield _path
+        except FileNotFoundError:
+            pass
+
+def toml_header(line_data):
+    data = line_data.strip()
+    length = len(data)
+    if data[0] == '[' and data[length - 1] == ']':
+        return data[1:length - 1]
+    return None
+
+def toml_name_value(line_data):
+    data = line_data.strip().split(' = ')
+    if len(data) != 2:
+        raise ValueError(f"Expected `name = value` with _toml_name_value for {line_data}")
+    return data
+
+def is_toml_comment_or_empty(line_data):
+    data = line_data.strip()
+    if len(data) == 0:
+        return True
+    if data[0] == '#':
+        return True
+    return False
+
+def replace_config_values(config_data, replace_file):
+    """ Replace values in config_data with values for fields in replace_file """
+
+    # new line with replacement value if needed or original line
+    def original_or_replaced_line(replacements, header, name, line):
+        replacement_value = [r_value for r_header, r_name, r_value in replacements
+                             if header == r_header and name == r_name]
+        if len(replacement_value) == 0:
+            return line
+        else:
+            new_value = replacement_value[0]
+            print(f"Replacing {last_header}:{name} = {value} with {new_value}")
+            return f"{name} = {new_value}"
+
+    replace_file_path = Path(replace_file)
+    if not replace_file_path.exists():
+        raise ValueError(f"Cannot replace values in config, {replace_file} does not exist.")
+    replace_data = replace_file_path.read_text().splitlines()
+    replacements = []
+    last_header = None
+    for line in replace_data:
+        if is_toml_comment_or_empty(line):
+            continue
+        header = toml_header(line)
+        if header is not None:
+            last_header = header
+            continue
+        name, value = toml_name_value(line)
+        replacements.append((last_header, name, value))
+    new_output = []
+    last_header = None
+    for line in config_data.splitlines():
+        if is_toml_comment_or_empty(line):
+            # See if this is a commented out value such as trusted_hash
+            try:
+                name, value = toml_name_value(line[1:])
+                line = original_or_replaced_line(replacements, last_header, name, line)
+                new_output.append(line)
+            except ValueError:
+                # parsing failed so comment isn't a name=value pair.
+                new_output.append(line)
+            continue
+        header = toml_header(line)
+        if header is not None:
+            last_header = header
+            new_output.append(line)
+            continue
+        name, value = toml_name_value(line)
+        line = original_or_replaced_line(replacements, last_header, name, value)
+        new_output.append(line)
+
+    # Make trailing new line
+    new_output.append("")
+    return "\n".join(new_output)
+
+def walk_path(path, include_dir=True):
+    for p in Path(path).iterdir():
+        if p.is_dir():
+            if include_dir:
+                yield p.resolve()
+            yield from walk_path(p)
+            continue
+        yield p.resolve()
+
+def ip_address_type(ip_address: str):
+    """ Validation method for argparse """
+    try:
+        ip = ipaddress.ip_address(ip_address)
+    except ValueError:
+        print(f"Error: Invalid IP: {ip_address}")
+    else:
+        return str(ip)
+
+
+class StagedStatus(enum.Enum):
+    UNSTAGED = "Protocol Unstaged"
+    NO_CONFIG = "No config.toml for Protocol"
+    BIN_ONLY = "Only bin is staged for Protocol, no config"
+    CONFIG_ONLY = "Only config is staged for Protocol, no bin"
+    STAGED = "Protocol Staged"
+    WRONG_NETWORK = "chainspec.toml is for wrong network"
+
+    def __repr__(self):
+        return self.value
+
+
+class NodeUtil:
+    """
+    Using non `_` and non-uppercase methods to expose for external commands.
+    Description of command comes from the doc string of method.
+    """
+
+    def __init__(self):
+        self._network_name = None
+        self._url = None
+
+        usage_docs = [f"{SCRIPT_NAME} <command> [args]", "Available commands:"]
+        commands = []
+        for function in [f for f in dir(self) if not f.startswith('_') and f[0].islower()]:
+            try:
+                usage_docs.append(f"  {function} - {getattr(self, function).__doc__.strip()}")
+            except AttributeError:
+                raise Exception(f"Error creating usage docs, expecting {function} to be root function and have doc comment."
+                                f" Lead with underscore if not.")
+            commands.append(function)
+        usage_docs.append(" ")
+
+        self._external_ip = None
+
+        parser = argparse.ArgumentParser(
+            description="Utility to help configure casper-node versions and troubleshoot.",
+            usage="\n".join(usage_docs))
+        parser.add_argument("command", help="Subcommand to run.", choices=commands)
+        args = parser.parse_args(sys.argv[1:2])
+
+        getattr(self, args.command)()
+
+    @staticmethod
+    def version():
+        """ Get current version of casper-node-util """
+        print(VERSION)
+
+    def _load_config_values(self, config):
+        """
+        Parses config file to get values
+
+        :param file_name: network config filename
+        """
+        source_url = "SOURCE_URL"
+        network_name = "NETWORK_NAME"
+
+        file_path = NET_CONFIG_PATH / config
+        expected_keys = (source_url, network_name)
+        config = {}
+        for line in file_path.read_text().splitlines():
+            if line.strip():
+                key, value = line.strip().split('=')
+                config[key] = value
+        for key in expected_keys:
+            if key not in config.keys():
+                print(f"Expected config value not found: {key} in {file_path}")
+                exit(1)
+        self._url = config[source_url]
+        self._network_name = config[network_name]
+
+    def _get_protocols(self):
+        """ Downloads protocol versions for network """
+        full_url = f"{self._network_url}/protocol_versions"
+        r = request.urlopen(full_url)
+        if r.status != 200:
+            raise IOError(f"Expected status 200 requesting {full_url}, received {r.status}")
+        pv = r.read().decode('utf-8')
+        return [data.strip() for data in pv.splitlines()]
+
+    def _check_staged_version(self, version):
+        """
+        Checks completeness of staged protocol version
+
+        :param version: protocol version in underscore format such as 1_0_0
+        :return: Status enum
+        """
+        if not self._network_name:
+            print("Config not parsed prior to call of check_staged_version and self._network_name is not populated.")
+            exit(1)
+        config_version_path = CONFIG_PATH / version
+        config_toml_file_path = config_version_path / "config.toml"
+        bin_version_path = BIN_PATH / version / "casper-node"
+        if not config_version_path.exists():
+            if not bin_version_path.exists():
+                return StagedStatus.UNSTAGED
+            return StagedStatus.BIN_ONLY
+        else:
+            if not bin_version_path.exists():
+                return StagedStatus.CONFIG_ONLY
+            if not config_toml_file_path.exists():
+                return StagedStatus.NO_CONFIG
+            if ChainspecToml(config_version_path).network_name != self._network_name:
+                return StagedStatus.WRONG_NETWORK
+        return StagedStatus.STAGED
+
+    @property
+    def _network_url(self):
+        return f"http://{self._url}/{self._network_name}"
+
+    def _pull_protocol_version(self, protocol_version):
+        verify_casper_user()
+
+        if not BIN_PATH.exists():
+            print(f"Error: expected bin file location {BIN_PATH} not found.")
+            exit(1)
+
+        if not CONFIG_PATH.exists():
+            print(f"Error: expected config file location {CONFIG_PATH} not found.")
+            exit(1)
+
+        etc_full_path = CONFIG_PATH / protocol_version
+        bin_full_path = BIN_PATH / protocol_version
+        base_url = f"{self._network_url}/{protocol_version}"
+        config_url = f"{base_url}/{CONFIG_ARCHIVE_FILE}"
+        bin_url = f"{base_url}/{BIN_ARCHIVE_FILE}"
+
+        if etc_full_path.exists():
+            print(f"Error: config version path {etc_full_path} already exists. Aborting.")
+            exit(1)
+        if bin_full_path.exists():
+            print(f"Error: bin version path {bin_full_path} already exists. Aborting.")
+            exit(1)
+
+        config_archive_path = CONFIG_PATH / CONFIG_ARCHIVE_FILE
+        download_file(config_url, config_archive_path)
+        extract_tar_gz(config_archive_path, etc_full_path)
+        print(f"Deleting {config_archive_path}")
+        config_archive_path.unlink()
+
+        bin_archive_path = BIN_PATH / BIN_ARCHIVE_FILE
+        download_file(bin_url, bin_archive_path)
+        extract_tar_gz(bin_archive_path, bin_full_path)
+        print(f"Deleting {bin_archive_path}")
+        bin_archive_path.unlink()
+        return True
+
+    def _get_internal_ip(self):
+        """ Get the internal/local IP address of the node """
+        try:
+            # Create a socket connection to determine the local IP
+            # This doesn't actually send data, just determines the route
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            return local_ip
+        except Exception:
+            # Fallback: try to get hostname IP
+            try:
+                return socket.gethostbyname(socket.gethostname())
+            except Exception:
+                return None
+
+    def _get_external_ip(self):
+        """ Query multiple sources to get external IP of node """
+        if self._external_ip:
+            return self._external_ip
+        services = (("https://checkip.amazonaws.com", "amazonaws.com"),
+                    ("https://4.icanhazip.com/", "icanhazip.com"),
+                    ("https://4.ident.me", "ident.me"))
+        ips = []
+        # Using our own PoolManager for shorter timeouts
+        print("Querying your external IP...")
+        for url, service in services:
+            r = request.urlopen(url)
+            if r.status != 200:
+                ip = ""
+            else:
+                ip = r.read().decode('utf-8').strip()
+            print(f" {service} says '{ip}' with Status: {r.status}")
+            if ip:
+                ips.append(ip)
+        if ips:
+            ip_addr = Counter(ips).most_common(1)[0][0]
+            if is_valid_ip(ip_addr):
+                self._external_ip = ip_addr
+                return ip_addr
+        return None
+
+    def _config_from_example(self, protocol_version, ip=None, replace_toml=None):
+        """
+        Internal Method to allow use in larger actions or direct call from config_from_example.
+        Create config.toml or config.toml.new (if previous exists) from config-example.toml
+        """
+        verify_casper_user()
+
+        config_path = CONFIG_PATH / protocol_version
+        config_toml_path = config_path / "config.toml"
+        config_example = config_path / "config-example.toml"
+        config_toml_new_path = config_path / "config.toml.new"
+
+        if not config_example.exists():
+            print(f"Error: {config_example} not found.")
+            exit(1)
+
+        if ip is None:
+            # Try internal IP first, fallback to external
+            ip = self._get_internal_ip()
+            if ip:
+                print(f"Using detected internal ip: {ip}")
+            else:
+                ip = self._get_external_ip()
+                print(f"Using detected external ip: {ip}")
+        else:
+            print(f"Using provided ip: {ip}")
+
+        if not is_valid_ip(ip):
+            print(f"Error: Invalid IP: {ip}")
+            exit(1)
+
+        outfile = config_toml_path
+        if config_toml_path.exists():
+            outfile = config_toml_new_path
+            print(f"Previous {config_toml_path} exists, creating as {outfile} from {config_example}.")
+            print(f"Replace {config_toml_path} with {outfile} to use the automatically generated configuration.")
+
+        config_text = config_example.read_text()
+        if replace_toml is not None:
+            config_text = replace_config_values(config_text, replace_toml)
+
+        outfile.write_text(config_text.replace("<IP ADDRESS>", ip))
+        
+        return True
+
+    def config_from_example(self):
+        """ Create config.toml from config-example.toml. (use 'sudo -u casper') """
+        parser = argparse.ArgumentParser(description=self.config_from_example.__doc__,
+                                         usage=(f"{SCRIPT_NAME} config_from_example [-h] "
+                                                "protocol_version [--replace replace_file.toml] [--ip IP]"))
+        parser.add_argument("protocol_version", type=str, help=f"protocol version to create under")
+        parser.add_argument("--ip",
+                            type=ip_address,
+                            help=f"optional ip to use for config.toml instead of detected ip.",
+                            required=False)
+        parser.add_argument("--replace",
+                            type=str,
+                            help=("optional toml file that holds replacements to make to config.toml "
+                                  "from config-example.toml"),
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+        ip = str(args.ip) if args.ip else None
+        self._config_from_example(args.protocol_version, ip, args.replace)
+
+    def stage_single_protocol(self):
+        """Stage a single protocol without checking if available"""
+        parser = argparse.ArgumentParser(description=self.stage_protocols.__doc__,
+                                         usage=(f"{SCRIPT_NAME} stage_single_protocol [-h] config protocol_version "
+                                                "[--ip IP] [--replace toml_file]"))
+        parser.add_argument("config", type=str, help=f"name of config file to use from {NET_CONFIG_PATH}")
+        parser.add_argument("protocol_version", type=str, help=f"protocol version to pull (x_y_z)")
+        parser.add_argument("--ip",
+                            type=ip_address,
+                            help=f"optional ip to use for config.toml instead of detected ip.",
+                            required=False)
+        parser.add_argument("--replace",
+                            type=str,
+                            help=("optional toml file that holds replacements to make to config.toml "
+                                  "from config-example.toml"),
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+        self._load_config_values(args.config)
+
+        verify_casper_user()
+        exit_code = 0
+        pv = args.protocol_version
+        status = self._check_staged_version(pv)
+        if status == StagedStatus.STAGED:
+            print(f"{pv}: {status}")
+        elif status in (StagedStatus.BIN_ONLY, StagedStatus.CONFIG_ONLY):
+            print(f"{pv}: {status} - Not automatically recoverable.")
+            exit_code = 1
+        if status == StagedStatus.UNSTAGED:
+            print(f"Pulling protocol for {pv}.")
+            if not self._pull_protocol_version(pv):
+                exit_code = 1
+        if status in (StagedStatus.UNSTAGED, StagedStatus.NO_CONFIG):
+            print(f"Creating config for {pv}.")
+            ip = str(args.ip) if args.ip else None
+            if not self._config_from_example(pv, ip, args.replace):
+                exit_code = 1
+        exit(exit_code)
+
+
+
+    def stage_protocols(self):
+        """Stage available protocols if needed (use 'sudo -u casper')"""
+        parser = argparse.ArgumentParser(description=self.stage_protocols.__doc__,
+                                         usage=(f"{SCRIPT_NAME} stage_protocols [-h] config "
+                                                "[--ip IP] [--replace toml_file]"))
+        parser.add_argument("config", type=str, help=f"name of config file to use from {NET_CONFIG_PATH}")
+        parser.add_argument("--ip",
+                            type=ip_address,
+                            help=f"optional ip to use for config.toml instead of detected ip.",
+                            required=False)
+        parser.add_argument("--replace",
+                            type=str,
+                            help=("optional toml file that holds replacements to make to config.toml "
+                                  "from config-example.toml"),
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+        self._load_config_values(args.config)
+
+        verify_casper_user()
+        exit_code = 0
+        for pv in self._get_protocols():
+            status = self._check_staged_version(pv)
+            if status == StagedStatus.STAGED:
+                print(f"{pv}: {status}")
+                continue
+            elif status in (StagedStatus.BIN_ONLY, StagedStatus.CONFIG_ONLY):
+                print(f"{pv}: {status} - Not automatically recoverable.")
+                exit_code = 1
+                continue
+            if status == StagedStatus.UNSTAGED:
+                print(f"Pulling protocol for {pv}.")
+                if not self._pull_protocol_version(pv):
+                    exit_code = 1
+            if status in (StagedStatus.UNSTAGED, StagedStatus.NO_CONFIG):
+                print(f"Creating config for {pv}.")
+                ip = str(args.ip) if args.ip else None
+                if not self._config_from_example(pv, ip, args.replace):
+                    exit_code = 1
+        exit(exit_code)
+
+    def check_protocols(self):
+        """ Checks if protocol are fully installed """
+        parser = argparse.ArgumentParser(description=self.check_protocols.__doc__,
+                                         usage=f"{SCRIPT_NAME} check_protocols [-h] config ")
+        parser.add_argument("config", type=str, help=f"name of config file to use from {NET_CONFIG_PATH}")
+        args = parser.parse_args(sys.argv[2:])
+        self._load_config_values(args.config)
+
+        exit_code = 0
+        for pv in self._get_protocols():
+            status = self._check_staged_version(pv)
+            if status != StagedStatus.STAGED:
+                exit_code = 1
+            print(f"{pv}: {status.value}")
+        exit(exit_code)
+
+    def check_for_upgrade(self):
+        """ Checks if last protocol is staged """
+        parser = argparse.ArgumentParser(description=self.check_for_upgrade.__doc__,
+                                         usage=f"{SCRIPT_NAME} check_for_upgrade [-h] config ")
+        parser.add_argument("config", type=str, help=f"name of config file to use from {NET_CONFIG_PATH}")
+        args = parser.parse_args(sys.argv[2:])
+        self._load_config_values(args.config)
+        last_protocol = self._get_protocols()[-1]
+        status = self._check_staged_version(last_protocol)
+        if status == StagedStatus.UNSTAGED:
+            print(f"{last_protocol}: {status.value}")
+            exit(1)
+        exit(0)
+
+    @staticmethod
+    def check_permissions():
+        """ Checking files are owned by casper. """
+        # If a user runs commands under root, it can give files non casper ownership and cause problems.
+        exit_code = 0
+        for path in walk_file_locations():
+            if not is_casper_owned(path):
+                print(f"{path} is owned by {path.owner()}:{path.group()}")
+                exit_code = 1
+        if exit_code == 0:
+            print("Permissions are correct.")
+        exit(exit_code)
+
+    @staticmethod
+    def fix_permissions():
+        """ Sets all files owner to casper (use 'sudo') """
+        verify_root_user()
+
+        exit_code = 0
+        for path in walk_file_locations():
+            if not is_casper_owned(path):
+                print(f"Correcting ownership of {path}")
+                chown(path, 'casper', 'casper')
+                if not is_casper_owned(path):
+                    print(f"Ownership set failed.")
+                    exit_code = 1
+        exit(exit_code)
+
+    @staticmethod
+    def rotate_logs():
+        """ Rotate the logs for casper-node (use 'sudo') """
+        verify_root_user()
+        os.system("logrotate -f /etc/logrotate.d/casper-node")
+
+    def restart(self):
+        """ Restart casper-node-launcher (use 'sudo) """
+        # Using stop, pause, start to get full reload not done with systemctl restart
+        self.stop()
+        time.sleep(0.5)
+        self.start()
+
+    @staticmethod
+    def stop():
+        """ Stop casper-node-launcher (use 'sudo') """
+        verify_root_user()
+        os.system("systemctl stop casper-node-launcher")
+
+    @staticmethod
+    def start():
+        """ Start casper-node-launcher (use 'sudo') """
+        verify_root_user()
+        os.system("systemctl start casper-node-launcher")
+
+    @staticmethod
+    def systemd_status():
+        """ Status of casper-node-launcher """
+        # using op.popen to stop hanging return to terminate
+        result = os.popen("systemctl status casper-node-launcher")
+        print(result.read())
+
+    @staticmethod
+    def delete_local_state():
+        """ Delete local db and status files. (use 'sudo') """
+        parser = argparse.ArgumentParser(description=NodeUtil.delete_local_state.__doc__,
+                                         usage=f"{SCRIPT_NAME} delete_local_state [-h] --verify-delete-all")
+        parser.add_argument("--verify_delete_all",
+                            action='store_true',
+                            help="Required for verification that you want to delete everything",
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+        verify_root_user()
+
+        if not args.verify_delete_all:
+            print(f"Include '--verify_delete_all' flag to confirm. Exiting.")
+            exit(1)
+
+        # missing_ok=True arg to unlink only 3.8+, using try/catch.
+        delete_directory(DB_PATH)
+        cnl_state = CONFIG_PATH / "casper-node-launcher-state.toml"
+        try:
+            cnl_state.unlink()
+        except FileNotFoundError:
+            pass
+
+    def force_run_version(self):
+        """ Force casper-node-launcher to start at a certain protocol version """
+        parser = argparse.ArgumentParser(description=NodeUtil.force_run_version.__doc__,
+                                         usage=f"{SCRIPT_NAME} force_run_version [-h] protocol_version")
+        parser.add_argument("protocol_version", help="Protocol version for casper-node-launcher to run.")
+        args = parser.parse_args(sys.argv[2:])
+        version = args.protocol_version
+        config_path = CONFIG_PATH / version
+        bin_path = BIN_PATH / version
+        if not config_path.exists():
+            print(f"/etc/casper/{version} not found.  Aborting.")
+            exit(1)
+        if not bin_path.exists():
+            print(f"/var/lib/casper/bin/{version} not found.  Aborting.")
+            exit(1)
+        # Need to be root to restart below
+        verify_root_user()
+        state_path = CONFIG_PATH / "casper-node-launcher-state.toml"
+        lines = ["mode = 'RunNodeAsValidator'",
+                 f"version = '{version.replace('_','.')}'",
+                 f"binary_path = '/var/lib/casper/bin/{version}/casper-node'",
+                 f"config_path = '/etc/casper/{version}/config.toml'"]
+        state_path.write_text("\n".join(lines))
+        # Make file casper:casper owned
+        import pwd
+        user = pwd.getpwnam('casper')
+        os.chown(state_path, user.pw_uid, user.pw_gid)
+        self.restart()
+
+    @staticmethod
+    def unstage_protocol():
+        """ Unstage (delete) a certain protocol version """
+        parser = argparse.ArgumentParser(description=NodeUtil.unstage_protocol.__doc__,
+                                         usage=f"{SCRIPT_NAME} unstage_protocol [-h] protocol_version")
+        parser.add_argument("protocol_version", help="Protocol version for casper-node-launcher to run.")
+        parser.add_argument("--verify_delete",
+                            action='store_true',
+                            help="Required for verification that you want to delete protocol",
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+        version = args.protocol_version
+        config_path = CONFIG_PATH / version
+        bin_path = BIN_PATH / version
+        if not config_path.exists() and not bin_path.exists():
+            print(f"{config_path} and {bin_path} not found.  Aborting.")
+            exit(1)
+
+        if not args.verify_delete:
+            print(f"Include '--verify_delete' flag to confirm deleting protocol. Exiting.")
+            exit(1)
+        # Need to be root to delete
+        verify_root_user()
+
+        print(f"Deleting {config_path}...")
+        delete_directory(config_path, True)
+        print(f"Deleting {bin_path}...")
+        delete_directory(bin_path, True)
+
+
+    @staticmethod
+    def _chainspec_name(chainspec_path):
+        # Hack to not require toml package install
+        for line in chainspec_path.read_text().splitlines():
+            name_data = "name = '"
+            if line[:len(name_data)] == name_data:
+                return line.split(name_data)[1].split("'")[0]
+
+    @staticmethod
+    def _format_status(status, external_block_data=None):
+        try:
+            if status is None:
+                status = {}
+            error = status.get("error")
+            if error:
+                return f"status error: {error}"
+            is_new_status = status.get("available_block_range") is not None
+            block_info = status.get("last_added_block_info")
+            output = []
+            if block_info is not None:
+                cur_block = block_info.get('height')
+                output.append(f"Last Block: {cur_block} (Era: {block_info.get('era_id')})")
+                if external_block_data is not None:
+                    if len(external_block_data) > 1:
+                        output.append(f" Tip Block: {external_block_data[0]} (Era: {external_block_data[1]})")
+                        output.append(f"    Behind: {external_block_data[0] - cur_block}")
+                        output.append("")
+            output.extend([
+                f"Peer Count: {len(status.get('peers', []))}",
+                f"Uptime: {status.get('uptime', '')}",
+                f"Build: {status.get('build_version')}",
+                f"Key: {status.get('our_public_signing_key')}",
+                f"Next Upgrade: {status.get('next_upgrade')}",
+                ""
+            ])
+            if is_new_status:
+                output.append(f"Reactor State: {status.get('reactor_state', '')}")
+                abr = status.get("available_block_range", {"low": "", "high": ""})
+                output.append(f"Available Block Range - Low: {abr.get('low')}  High: {abr.get('high')}")
+            output.append("")
+
+            return "\n".join(output)
+        except Exception:
+            return "Cannot parse status return."
+
+    def node_status(self):
+        """ Get full status of node """
+
+        parser = argparse.ArgumentParser(description=NodeUtil.watch.__doc__,
+                                         usage=f"{SCRIPT_NAME} node_status [-h] [--ip]")
+        parser.add_argument("--ip", help="ip address of a node at the tip",
+                            type=ip_address_type, required=False)
+        args = parser.parse_args(sys.argv[2:])
+
+        try:
+            status = get_status()
+        except Exception as e:
+            status = {"error": e}
+        external_block_data = None
+        if args.ip:
+            external_block_data = remote_status_height(str(args.ip))
+        print(self._format_status(status, external_block_data))
+
+    @staticmethod
+    def watch():
+        """ watch full_node_status """
+        DEFAULT = 10
+        MINIMUM = 5
+
+        parser = argparse.ArgumentParser(description=NodeUtil.watch.__doc__,
+                                         usage=f"{SCRIPT_NAME} watch [-h] [-r] [--ip]")
+        parser.add_argument("-r", "--refresh", help="Refresh time in secs", type=int, default=DEFAULT, required=False)
+        parser.add_argument("--ip", help="ip address of a node at the tip",
+                            type=ip_address_type, required=False)
+        args = parser.parse_args(sys.argv[2:])
+        ip_arg = ""
+        if args.ip:
+            ip_arg = f"--ip {str(args.ip)}"
+        refresh = MINIMUM if args.refresh < MINIMUM else args.refresh
+        os.system(f"watch -n {refresh} '{sys.argv[0]} node_status {ip_arg}; {sys.argv[0]} systemd_status'")
+
+    @staticmethod
+    def rpc_active():
+        """ Is local RPC active? """
+        try:
+            block = rpc_get_block("127.0.0.1", timeout=1)
+            print("RPC: Ready\n")
+            exit(0)
+        except Exception:
+            print("RPC: Not Ready\n")
+            exit(1)
+
+    def shift_ports(self):
+        """ Change ports in config.toml files to allow use of reverse proxy """
+        parser = argparse.ArgumentParser(description=self.shift_ports.__doc__,
+                                         usage=f"{SCRIPT_NAME} shift_ports [--rpc] [--rest] [--sse]")
+        parser.add_argument("--rpc",
+                            help="Port to use for RPC",
+                            type=int,
+                            required=False,
+                            default=7770)
+        parser.add_argument("--rest",
+                            help="Port to use for REST",
+                            type=int,
+                            required=False,
+                            default=8880)
+        parser.add_argument("--sse",
+                            help="Port to use for SSE",
+                            type=int,
+                            required=False,
+                            default=9990)
+
+        args = parser.parse_args(sys.argv[2:])
+
+        verify_root_user()
+
+        for config_file in glob.glob("/etc/casper/*/config.toml"):
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp_file:
+                with open(config_file) as src_file:
+                    for line in src_file:
+                        if "address = '0.0.0.0:7777'" in line:
+                            print(f"Changing RPC (7777) to port {args.rpc}")
+                            tmp_file.write(f"address = '0.0.0.0:{args.rpc}'\n")
+                        elif "address = '0.0.0.0:8888'" in line:
+                            print(f"Changing REST (8888) to port {args.rest}")
+                            tmp_file.write(f"address = '0.0.0.0:{args.rest}'\n")
+                        elif "address = '0.0.0.0:9999'" in line:
+                            print(f"Changing SSE (9999) to port {args.sse}")
+                            tmp_file.write(f"address = '0.0.0.0:{args.sse}'\n")
+                        else:
+                            tmp_file.write(line)
+            print(f"Replacing {config_file}")
+            # Preserve old permissions to new file before replacement
+            shutil.copystat(config_file, tmp_file.name)
+            shutil.move(tmp_file.name, config_file)
+
+    def get_trusted_hash(self):
+        """ Retrieve trusted hash from given node ip while verifying network """
+        parser = argparse.ArgumentParser(description=self.get_trusted_hash.__doc__,
+                                         usage=f"{SCRIPT_NAME} get_trusted_hash ip [--protocol] [--block]")
+        parser.add_argument("ip",
+                            help="Trusted Node IP address ipv4 format",
+                            type=ip_address_type)
+        parser.add_argument("--protocol",
+                            help="Protocol version for chainspec to verify same network",
+                            required=False,
+                            default="1_0_0")
+
+        args = parser.parse_args(sys.argv[2:])
+
+        # TODO: Doesn't work without 1_0_0 protocol. Needs to find last as default
+
+        status = None
+        try:
+            status = get_status(args.ip)
+        except Exception as e:
+            print(f"Error retrieving status from {args.ip}: {e}")
+            exit(1)
+
+        remote_network_name = status["chainspec_name"]
+        chainspec_path = Path("/etc/casper") / args.protocol / "chainspec.toml"
+
+        if not chainspec_path.exists():
+            print(f"Cannot find {chainspec_path}, specify valid protocol folder to verify network name.")
+            exit(1)
+
+        chainspec_name = self._chainspec_name(chainspec_path)
+        if chainspec_name != remote_network_name:
+            print(f"Node network name: '{remote_network_name}' does not match {chainspec_path}: '{chainspec_name}'")
+            exit(1)
+
+        last_added_block_info = status["last_added_block_info"]
+        if last_added_block_info is None:
+            print(f"No last_added_block_info in {args.ip} status. Node is not in sync and will not be used.")
+            exit(1)
+        block_hash = last_added_block_info["hash"]
+        print(f"{block_hash}")
+
+    def get_ip(self):
+        """ Get external IP of node. Can be used to test code used for automatically filling IP
+         or to check if you need to update the IP in your config.toml file. """
+        print(self._get_external_ip())
+
+    @staticmethod
+    def node_log():
+        """ Get nodes current logs. Same as 'cat /var/log/casper-node.log` with grep added if using arguments
+        and tail if following. """
+        parser = argparse.ArgumentParser(description=NodeUtil.node_log.__doc__,
+                                         usage=f"{SCRIPT_NAME} node_log [--err] [--warn] [--follow]")
+        parser.add_argument("--err",
+                            help="Return log lines with level ERR",
+                            action='store_true',
+                            required=False)
+        parser.add_argument("--warn",
+                            help="Return log lines with level WARN",
+                            action='store_true',
+                            required=False)
+        parser.add_argument("--follow",
+                            help="Follow log file as lines are added",
+                            action='store_true',
+                            required=False)
+        args = parser.parse_args(sys.argv[2:])
+
+        grep_args = ""
+        grep_args += " -e '\"level\":\"ERR\"'" if args.err else ""
+        grep_args += " -e '\"level\":\"WARN\"'" if args.warn else ""
+
+        grep = f" | grep {grep_args}" if len(grep_args) > 0 else ""
+
+        main_cmd = "tail -f" if args.follow else "cat"
+
+        os.system(f"{main_cmd} /var/log/casper/casper-node.log {grep}")
+
+    @staticmethod
+    def node_error_log():
+        """ Get nodes current teardown error log. Same as 'cat /var/log/casper-node.stderr.log` """
+        os.system("cat /var/log/casper/casper-node.stderr.log")
+
+    @staticmethod
+    def sidecar_status():
+        """ Get systemd status of casper-sidecar. Same as `systemctl status casper-sidecar` """
+        # using op.popen to stop hanging return to terminate
+        result = os.popen("systemctl status casper-sidecar")
+        print(result.read())
+
+    @staticmethod
+    def sidecar_log():
+        """ Get log from casper-sidecar. Same as `journalctl -u casper-sidecar --no-pager` """
+        parser = argparse.ArgumentParser(description=NodeUtil.sidecar_log.__doc__,
+                                         usage=f"{SCRIPT_NAME} sidecar_log [--follow]")
+        parser.add_argument("--follow",
+                            help="Follow log file as lines are added",
+                            action='store_true',
+                            required=False)
+
+        args = parser.parse_args(sys.argv[2:])
+        follow = "--follow" if args.follow else ""
+        os.system(f"journalctl -u casper-sidecar --no-pager {follow}")
+
+    @staticmethod
+    def sidecar_stop():
+        """ Stop casper-sidecar. Use 'sudo'.
+        Same as `sudo systemctl stop casper-sidecar` """
+        verify_root_user()
+        os.system("sudo systemctl stop casper-sidecar")
+
+    @staticmethod
+    def sidecar_start():
+        """ Start casper-sidecar. Use 'sudo'.
+        Same as `sudo systemctl start casper-sidecar` """
+        verify_root_user()
+        os.system("sudo systemctl start casper-sidecar")
+
+    @staticmethod
+    def sidecar_restart():
+        """ Restart casper-sidecar. Use 'sudo'. """
+        verify_root_user()
+        NodeUtil.sidecar_stop()
+        time.sleep(0.5)
+        NodeUtil.sidecar_start()
+
+
+if __name__ == '__main__':
+    NodeUtil()
+

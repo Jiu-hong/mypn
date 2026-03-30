@@ -1,0 +1,2 @@
+sudo sed -i "/trusted_hash =/c\trusted_hash = '$(casper-client get-block --node-address http://192.168.2.101:7777 | jq -r .result.block_with_signatures.block.Version2.hash | tr -d '\n')'" /home/jh/mynetwork-node/etc/2_1_1/config.toml
+sudo supervisorctl -c /etc/supervisor/supervisord.conf restart casper-node-launcher

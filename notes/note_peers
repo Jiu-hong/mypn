@@ -1,0 +1,3 @@
+config-example.toml
+min_peers_for_initialization = 1
+-> make this to 1 when validators are 3 in total.

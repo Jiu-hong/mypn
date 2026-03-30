@@ -1,0 +1,23 @@
+# Start of contract portion
+# Keys are contract package hash of contracts used for exploit
+# Expected behavior is clearing out of named keys under all contact versions held
+#
+# Value AAAAAAAJ is base64 encoding of 9, representing a Unit type in the system
+# This is a flag to indicate that this is a special case and further actions
+# are needed rather than simply writing this value to the key location.
+#
+# These can be queried with the following:
+# state root hash is needed and is selected from what height you wish to query.
+#
+# Retrieve the contract package
+# $ casper-client query-global-state --key [key from an entry below] --state-root-hash [state root hash]
+#
+# This will return data with versions under the ContractPackage in the form of contract-[contract_hash]
+# This value we be used as a key, however the leading `contract-` is replaced with `hash-`
+# $ casper-client query-global-state --key [contract-hash] --state-root-hash [state root hash]
+
+
+[[entries]]
+key = "balance-17cf95217a4bdaef91cfaaf0507cb649d502cbdab49cb7bd123ea20863d3b460"
+value = "AAgAAAAHADCw7ayJIwg="
+

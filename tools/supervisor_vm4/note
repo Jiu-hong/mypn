@@ -1,0 +1,5 @@
+sudo supervisorctl -c /etc/supervisor/supervisord.conf reread
+sudo supervisorctl -c /etc/supervisor/supervisord.conf update
+sudo supervisorctl -c /etc/supervisor/supervisord.conf start casper-node-launcher
+sudo supervisorctl -c /etc/supervisor/supervisord.conf stop casper-node-launcher
+sudo supervisorctl -c /etc/supervisor/supervisord.conf restart casper-node-launcher

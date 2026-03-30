@@ -1,0 +1,18 @@
+step1: (host) prepare server hosting binary and configs for genesis version
+step2: (3 vms) run_node.sh on the 3 vms
+
+# wait until 2 or 3 eras are passed
+step3: (1 vm) get state_root_hash of last switch block and stop 3 nodes.
+step4: 1) (1 vm )compress lmdb to tar and transfer
+  2) (3 new vms) sftp to get tar of lmdb
+
+step5: (1 vm) generate global_state.toml with state_root_hash and lmdb
+step6:
+  - 1) (host) transfer global_state.toml to host
+  - 2) (host) prepare upgrade configs and change protocol_versions to upgrade version only
+  - global_state.toml: to the configs
+  - chainspec.toml: (activation_point and version)
+  - config.toml: known_addresses
+  - protocol_versions: upgrade version only
+
+step7: (3 new vms) upgrade_node to get the upgrade version and start

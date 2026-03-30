@@ -1,0 +1,21 @@
+
+# decompress database on target machine
+cd /var/lib/casper/casper-node/mynetwork
+sudo rm -rf *
+zstd -cd --long=31 ~/file.tar.zst  | sudo -u casper tar -xv
+
+
+# stage
+sudo systemctl stop casper-node-launcher
+sudo rm -rf /etc/casper/2_0_0
+sudo rm -rf /var/lib/casper/bin/2_0_0
+source upgrade_node.sh
+
+
+cd /var/lib/casper/casper-node/mynetwork
+sudo rm -rf *
+zstd -cd --long=31 ~/file.tar.zst  | sudo -u casper tar -xv
+
+cd
+source upgrade_node.sh
+sudo systemctl restart casper-node-launcher

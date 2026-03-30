@@ -1,0 +1,24 @@
+only_listed_validators = true
+
+# !! the bonded_amount should be greater than minimum_bid_amount in chainspec.toml
+[[accounts]]
+public_key = "01017dec8773ff3514a08ccd85ae7f7a875e3829c6eafe88fe7f2f2bcdd9181c9c"
+balance = "500000000004"
+
+[accounts.validator]
+bonded_amount = "10000000000001"
+delegation_rate = 10
+
+[[accounts]]
+public_key = "0121b47319d2366b088594386365703c4a47e82d588b39e736ed2831c967528659"
+balance = "500000000005"
+
+[accounts.validator]
+bonded_amount = "20000000000002"
+
+[[accounts]]
+public_key = "01dde2528a59fd47e16cbcec545db86efa79d174ce78715f1659ae83ec0aac3020"
+balance = "500000000006"
+
+[accounts.validator]
+bonded_amount = "30000000000003"

@@ -1,0 +1,8 @@
+https://s3.amazonaws.com/casper-mainnet.make.services/back-ups/casper-mainnet-node-compressed-2026-03-08.tar.zst
+
+<!-- Testnet and Mainnet snapshots can be obtained from the following S3 buckets, correspondingly:
+
+- Testnet https://s3.amazonaws.com/casper-testnet.make.services/back-ups/casper-testnet-node-compressed-2025-04-16.tar.zst
+- Mainnet https://s3.amazonaws.com/casper-mainnet.make.services/back-ups/casper-mainnet-node-compressed-2025-04-16.tar.zst
+
+Note, that you’d need to update the date to “yesterday”. The snapshots are stored for 7 days after their creation. -->

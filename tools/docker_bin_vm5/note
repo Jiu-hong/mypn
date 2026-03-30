@@ -1,0 +1,45 @@
+# this works on vm5 -=> run docker with default path
+# Build
+docker build -f tools/docker/run_node.Dockerfile -t casper-run tools/docker/
+
+# Run (with persistent volumes)
+docker rm -f casper-node
+docker run -d \
+  --name casper-node \
+  --restart unless-stopped \
+  --add-host mynetwork.local:192.168.2.100 \
+  -e RUST_LOG=debug \
+  -e LAN_IP=192.168.2.108 \
+  -v casper-data:/var/lib/casper \
+  -v casper-logs:/var/log/casper \
+  -v casper-config:/etc/casper \
+  -p 7779:7779 -p 8888:8888 -p 9999:9999 -p 35000:35000 \
+  casper-run
+
+# check logs
+1. Docker logs (stdout from the entrypoint/launcher process):
+# Since casper-node-launcher runs directly as PID 1 (not via systemd or supervisord), 
+all logs go to stdout/stderr, which means:
+
+docker logs casper-node
+docker logs -f casper-node   # follow/tail
+
+2. Casper log files (written inside the container to /var/log/casper):
+# /var/log/casper only gets populated when the node is managed by systemd or supervisord
+# (which redirects stdout to log files). In Docker without systemd, docker logs is the correct place.
+docker exec casper-node tail -f /var/log/casper/casper-node.log
+docker exec casper-node tail -f /var/log/casper/casper-node.stderr
+
+# restart docker
+docker restart casper-node
+# or stop/start
+docker stop casper-node
+docker start casper-node
+
+# opens an interactive bash shell inside the running container 
+docker exec -it casper-node bash
+# Type exit to leave
+
+# show relationship of processes
+#-s shows the parent chain (ancestors up to PID 1), -n picks the newest match if multiple.
+pstree -p -s $(pgrep -n casper-node)

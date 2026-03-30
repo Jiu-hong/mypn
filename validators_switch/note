@@ -1,0 +1,59 @@
+# compress database on source machine
+rm ~/file.tar.zst
+cd /var/lib/casper/casper-node/mynetwork
+tar -b 4096 -cv --sparse . | zstd -5 -cv -T0 --long=31 > ~/file.tar.zst
+
+# decompress database on target machine
+cd /var/lib/casper/casper-node/mynetwork
+sudo rm -rf *
+zstd -cd --long=31 ~/file.tar.zst  | sudo -u casper tar -xv
+
+
+# get tool
+
+# get global-state-update-gen json info
+
+curl "https://genesis.casper.network/artifacts/casper-node/$(curl https://genesis.casper.network/artifacts/casper-node/dev.latest)/version.json"
+
+# get global-state-update-gen binary
+
+curl -JLO "https://genesis.casper.network/artifacts/casper-node/$(curl https://genesis.casper.network/artifacts/casper-node/dev.latest)/global-state-update-gen_0.3.0_amd64.deb"
+
+<!-- install global-state-update-gen -->
+
+sudo dpkg -i global-state-update-gen_0.3.0_amd64.deb && global-state-update-gen --help
+
+<!-- the location of data -->
+
+ls -l /var/lib/casper/casper-node/mynetwork
+total 1152
+-rw-r--r-- 1 casper casper 2089072132096 Mar 8 05:12 data.lmdb
+-rw-r--r-- 1 casper casper 32896 Mar 8 05:12 data.lmdb-lock
+-rw-r--r-- 1 casper casper 4 Mar 8 05:11 sse_index
+-rw-r--r-- 1 casper casper 1127428915200 Mar 8 05:12 storage.lmdb
+-rw-r--r-- 1 casper casper 448 Mar 8 05:12 storage.lmdb-lock
+drwxr-xr-x 2 casper casper 4096 Mar 8 05:11 unit_files
+
+last switch block''s state-root-hash: era 4
+efc63494734b733665d757bca8825813ac0a83dbfee2767f4e601f6ee841b9eb
+
+<!-- command -->
+
+# option1:
+sudo global-state-update-gen generic \
+ -d /var/lib/casper/casper-node/mynetwork \
+ -s efc63494734b733665d757bca8825813ac0a83dbfee2767f4e601f6ee841b9eb \
+ config.toml > global_state.toml
+
+# when setting confis, add global_state.toml under example/2_1_2 then 
+# create config.tar.gz
+
+# option2:
+rm /tmp/global_state.toml
+sudo global-state-update-gen change-validators \
+  -d /var/lib/casper/casper-node/mynetwork \
+  -s efc63494734b733665d757bca8825813ac0a83dbfee2767f4e601f6ee841b9eb \
+  -v '01017dec8773ff3514a08ccd85ae7f7a875e3829c6eafe88fe7f2f2bcdd9181c9c,100000000004,500000000004' \
+  -v '0121b47319d2366b088594386365703c4a47e82d588b39e736ed2831c967528659,200000000005,500000000005' \
+  -v '01dde2528a59fd47e16cbcec545db86efa79d174ce78715f1659ae83ec0aac3020,200000000006,500000000006' \
+  > /tmp/global_state.toml

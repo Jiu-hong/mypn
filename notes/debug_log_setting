@@ -1,0 +1,14 @@
+sudo systemctl edit casper-node-launcher --force
+
+add:
+[Service]
+Environment="RUST_LOG=debug"
+
+Then reload and restart:
+
+sudo systemctl daemon-reload
+sudo systemctl restart casper-node-launcher
+
+To verify it's set
+
+sudo systemctl show casper-node-launcher | grep RUST_LOG

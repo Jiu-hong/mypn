@@ -1,0 +1,32 @@
+sudo supervisorctl stop casper-node-launcher
+sudo supervisorctl status
+
+export CSPR_VERSION=v2_1_1
+export CSPR_PATH=`echo $CSPR_VERSION | sed 's/v//g' | sed 's/\./_/g'`
+echo $CSPR_PATH
+
+mkdir -p hbdata/soft/cspr-$CSPR_VERSION/etc
+cd hbdata/soft/cspr-$CSPR_VERSION
+curl -L http://mynetwork.local:5000/mynetwork/$CSPR_PATH/bin.tar.gz | tar zxv
+cd etc/
+curl -L http://mynetwork.local:5000/mynetwork/$CSPR_PATH/config.tar.gz | tar zxv
+mv config-example.toml config.toml
+cd ~/tests
+
+mkdir -p hbdata/cspr/bin hbdata/cspr/etc
+ln -snf cspr-$CSPR_VERSION hbdata/soft/cspr
+ln -snf ../../soft/cspr-$CSPR_VERSION hbdata/cspr/bin/$CSPR_PATH
+ln -snf ../../../soft/cspr-$CSPR_VERSION/etc hbdata/cspr/etc/$CSPR_PATH
+
+# public_ip=`curl -s ipinfo.io | jq -r '.ip'`
+public_ip=192.168.2.107
+echo $public_ip
+
+sed -i 's#0.0.0.0:9999#127.0.0.1:9999#g' hbdata/soft/cspr-${CSPR_VERSION}/etc/config.toml 
+sed -i 's#0.0.0.0:8888#127.0.0.1:8888#g' hbdata/soft/cspr-${CSPR_VERSION}/etc/config.toml 
+sed -i 's#0.0.0.0:7777#127.0.0.1:7777#g' hbdata/soft/cspr-${CSPR_VERSION}/etc/config.toml 
+sed -i "s#<IP ADDRESS>:0#${public_ip}:0#g" hbdata/soft/cspr-${CSPR_VERSION}/etc/config.toml 
+echo $(hbdata/soft/cspr/casper-node --version | awk '{print $2}' | awk -F '-' '{print $1}')
+
+supervisorctl start cspr
+supervisorctl status

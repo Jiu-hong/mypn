@@ -1,4 +1,4 @@
-## STEP1  Customize your protocols and host them on your server
+## STEP1 Customize your protocols and host them on your server
 
 ### Required -> `chainspec.toml`
 
@@ -10,8 +10,7 @@ activation_point = 2
 -> it represents an era ID, meaning the protocol version becomes active at the start of this era.
 ```
 
-
-The file structure is like this 
+The file structure is like this
 
 ```
 └── mynetwork
@@ -25,9 +24,10 @@ The file structure is like this
     └── protocol_versions    -> change it adding new version of protocol
 
 ```
-*notes:*
 
-*protocol_versions*
+_notes:_
+
+_protocol_versions_
 
 ```
 1_0_0
@@ -38,27 +38,31 @@ The file structure is like this
 
 ### Check if the files are hosted successfully on your server:
 
-Issue this command 
+Issue this command
+
 ```
 curl -s http://<domain name>/<network name>/protocol_versions
 ```
+
 for example, `curl -s http://testprivatenet.herokuapp.com/mynetwork/protocol_versions`
 
 output should be
+
 ```
 1_0_0
 1_0_1
 ```
 
 ---
-## STEP2 Upgrade Casper node to new version 
 
+## STEP2 Upgrade Casper node to new version
 
 ```
-sudo rm -rf /etc/casper/1_0_2
-sudo rm -rf /var/lib/casper/bin/1_0_2
+sudo rm -rf /etc/casper/2_1_2
+sudo rm -rf /var/lib/casper/bin/2_1_2
 sudo -u casper /etc/casper/node_util.py stage_protocols mynetwork.conf
 ```
+
 ## Verifying Successful Staging
 
 After you have successfully executed the above commands, wait a few minutes for a new block to be issued before checking that your node is correctly staged with the upgrade. After a few minutes, take a look at your status end-point, as follows:
@@ -76,6 +80,5 @@ $ curl -s localhost:8888/status | jq .next_upgrade
 
 ```
 
-
-refer to 
+refer to
 https://github.com/casper-network/casper-node/wiki/Upgrade-to-Casper-node-v1.4.6

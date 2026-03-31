@@ -4,8 +4,9 @@ bash load-image.sh
 
 # Apply the manifest
 
-cd /home/jh/mynetwork/mypn
-kubectl apply -f tools/k8s_bin_vm7-9/peers.yaml
+<!-- on control-plan server2604 -->
+
+kubectl apply -f peers.yaml
 
 # Watch pods come up
 

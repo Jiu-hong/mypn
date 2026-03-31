@@ -44,7 +44,7 @@ chmod +x tools/k8s_bin_vm7-9/load-image.sh
 source tools/k8s_bin_vm7-9/load-image.sh
 
 # Step 6 — Deploy:
-kubectl apply -f ppers.yaml
+kubectl apply -f peers.yaml
 
 # Step 7 — Verify:
 kubectl get pods -o wide   # should show 3 pods, one per worker node

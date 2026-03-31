@@ -1,0 +1,10 @@
+cd tools/k8s_bin_vm7-9/image
+
+# 1. Build base
+DOCKER_BUILDKIT=0  docker build -t casper-base:latest -f casper-base.Dockerfile .
+
+# 2. Build node image
+DOCKER_BUILDKIT=0  docker build -t casper-node:latest -f casper-node.Dockerfile .
+
+# 3. Build sidecar image
+DOCKER_BUILDKIT=0  docker build -t casper-sidecar:latest -f casper-sidecar.Dockerfile .

@@ -10,6 +10,18 @@ spec:
   ports:
     - port: 8080
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-sidecar
+spec:
+  selector:
+    app: myapp
+  ports:
+    - name: rpc
+      port: 7777
+      targetPort: 7777
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -87,12 +99,14 @@ spec:
               mountPath: /peer
 
       containers:
-        - name: app
-          image: casper-run:latest
+        - name: casper-node
+          image: casper-node:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: INITIAL_VERSION
               value: 'true'
+            - name: RUST_LOG
+              value: 'debug'
           volumeMounts:
             - name: peerdata
               mountPath: /peer
@@ -102,3 +116,8 @@ spec:
               mountPath: /validator-keys/1
             - name: valkeys-2
               mountPath: /validator-keys/2
+
+        - name: casper-sidecar
+          image: casper-sidecar:latest
+          imagePullPolicy: IfNotPresent
+          args: ['--path-to-config', '/etc/casper-sidecar/config.toml']
